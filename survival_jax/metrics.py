@@ -1,46 +1,40 @@
+# %%
 import jax
 import jax.numpy as jnp
-import jax.lax as lax
+import numpy as np
+from jax import jit, vmap
 
-@jax.jit
+# %%
 def concordant_pairs(hazards, current_hazard):
-        all_pairs = len(hazards)
-        concordant = jnp.sum(hazards < current_hazard)
-        tied = jnp.sum(hazards == current_hazard)
+        all_pairs = jnp.sum(hazards != 0)
+        concordant = jnp.sum(jnp.where(hazards != 0, hazards > current_hazard, 0))
+        tied = jnp.sum(jnp.where(hazards != 0, hazards == current_hazard, 0))
 
         return concordant + tied / 2, all_pairs
 
-def concordance_index(hazards, times, events):
 
-    assert len(hazards) == len(times) == len(events)
-    all_samples = len(hazards)
-    time_order = times.argsort()
+# %%
+@jit
+def c_index(hazards: jnp.ndarray, times: jnp.ndarray, events: jnp.ndarray) -> float:
+    def order_inputs(hazards: jnp.ndarray, times: jnp.ndarray, events: jnp.ndarray): 
+        time_order = times.argsort()
+        return hazards[time_order], events[time_order]
+    
+    hazards, events = order_inputs(hazards, times, events)
+    hazards = jnp.outer(events, hazards)
+    hazards_matrix = jnp.triu(hazards, 1)
+    concordant, all = vmap(concordant_pairs)(hazards_matrix, hazards.diagonal())
 
-    times = times[time_order]
-    hazards = hazards[time_order]
-    events = events[time_order]
+    return jnp.sum(concordant) / (jnp.sum(all) + 1e-9)
 
-    all_pairs = 0
-    concordant = 0
+# %%
+# # TODO: move to tests
+# times = np.random.rand(50000)
+# events = np.random.rand(50000) > 0.2
+# print(c_index(times, times, events), c_index(-times, times, events), c_index(jnp.ones_like(times), times, events))
 
-    for i in range(all_samples):
-        if events[i]:
-            concord, pairs = concordant_pairs(hazards[i + 1:], hazards[i])
-
-            concordant += concord
-            all_pairs += pairs
-
-    return concordant / all_pairs
-
-
-def concordance_generator(hazards):
-    @jax.jit
-    def concordance(current, hazard):
-        
-        current_concordance = current["concordant"]
-        new_concordants = current_concordance + jnp.sum(hazards < hazard) + (jnp.sum(hazards == hazard) *  0.5)
-        
-        new_pairs = current["all"] + len(hazards)
-        new = {"concordant": new_concordants, "all": new_pairs}
-        return new, current
-    return concordance
+# # %%
+# assert jnp.allclose(c_index(times, times, events), 1)
+# assert jnp.allclose(c_index(-times, times, events), 0)
+# assert c_index(jnp.ones_like(times), times, events) == 0.5
+# %%

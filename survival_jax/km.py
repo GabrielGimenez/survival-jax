@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import jax.lax as lax
 from jax import jit
 
-
 def kaplan_meier(times, events):
     death_t = death_times(times, events)
     hz = hazard_generator(times, events)
@@ -21,10 +20,11 @@ def km_generator(hazards):
 def hazard_generator(times, events):
     @jit
     def hazards(e_times):
-        in_risk = jnp.sum(jnp.where(times > e_times, 1, 0)) # em risco
-        e = jnp.nansum(jnp.where(times == e_times, events, jnp.nan)) # ocorreu evento
+        in_risk = jnp.sum(jnp.where(times > e_times, 1, 0))  # em risco
+        e = jnp.nansum(jnp.where(times == e_times, events, jnp.nan))  # ocorreu evento
         return e / in_risk
     return hazards
+
 
 def death_times(times, events):
     # Nonzero is equivalent to np where
